@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PentaPick - Admin</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .admin-container { max-width: 800px; margin: 0 auto; padding: 20px; }
+    .admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .admin-header h1 { font-size: 1.5rem; }
+    .admin-section { margin-bottom: 24px; }
+    .admin-section h2 { font-size: 1.1rem; margin-bottom: 12px; color: var(--accent2); }
+    .admin-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+    .admin-form .form-group { margin-bottom: 0; }
+    .admin-form .form-group input, .admin-form .form-group select {
+      width: 100%; padding: 10px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 0.9rem; outline: none;
+    }
+    .match-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .admin-match { background: var(--surface); border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid var(--border); }
+    .admin-match .title { font-weight: 600; font-size: 1rem; }
+    .admin-match .info { font-size: 0.85rem; color: var(--text2); margin: 4px 0; }
+    .admin-match .pools { display: flex; gap: 16px; margin: 8px 0; }
+    .admin-match .pool { padding: 8px 16px; border-radius: 8px; font-weight: 600; }
+    .admin-match .pool-a { background: rgba(59,130,246,0.15); color: var(--blue); }
+    .admin-match .pool-b { background: rgba(239,68,68,0.15); color: var(--red); }
+    .inline-input { width: 80px !important; display: inline-block; }
+  </style>
+</head>
+<body>
+
+  <!-- Admin Login -->
+  <div id="admin-login" class="container auth-page">
+    <h1>PentaPick Admin</h1>
+    <p>Enter admin password</p>
+    <div id="admin-error" class="error-msg"></div>
+    <div class="form-group">
+      <input type="password" id="admin-password" placeholder="Password" onkeydown="if(event.key==='Enter')adminLogin()">
+    </div>
+    <button class="btn btn-primary btn-block" onclick="adminLogin()">Login</button>
+  </div>
+
+  <!-- Admin Panel -->
+  <div id="admin-panel" style="display:none" class="admin-container">
+    <div class="admin-header">
+      <h1>PentaPick Admin</h1>
+      <div>
+        <a href="/display" target="_blank" class="btn btn-sm btn-primary" style="margin-right:8px;">Open Display</a>
+        <button class="btn btn-sm btn-red" onclick="adminLogout()">Logout</button>
+      </div>
+    </div>
+
+    <!-- Create Match -->
+    <div class="admin-section">
+      <h2>Create Match</h2>
+      <div class="admin-form">
+        <div class="form-group" style="flex:2; min-width:200px;">
+          <label>Match Title</label>
+          <input type="text" id="new-title" placeholder="e.g. Round 1 - Match 3">
+        </div>
+        <div class="form-group" style="flex:1; min-width:120px;">
+          <label>Team A</label>
+          <input type="text" id="new-option-a" placeholder="Team A">
+        </div>
+        <div class="form-group" style="flex:1; min-width:120px;">
+          <label>Team B</label>
+          <input type="text" id="new-option-b" placeholder="Team B">
+        </div>
+        <button class="btn btn-primary" onclick="createMatch()">Create</button>
+      </div>
+    </div>
+
+    <!-- Award Points -->
+    <div class="admin-section">
+      <h2>Award Points to All Users</h2>
+      <div class="admin-form">
+        <div class="form-group" style="width:120px;">
+          <label>Amount</label>
+          <input type="number" id="award-amount" value="200" min="1">
+        </div>
+        <div class="form-group" style="flex:1; min-width:200px;">
+          <label>Description</label>
+          <input type="text" id="award-desc" placeholder="Round bonus" value="Round bonus">
+        </div>
+        <button class="btn btn-green" onclick="awardPoints()">Award</button>
+      </div>
+    </div>
+
+    <!-- Active Matches -->
+    <div class="admin-section">
+      <h2>Matches</h2>
+      <div id="admin-matches"></div>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="admin-section">
+      <h2>Leaderboard</h2>
+      <div class="card" id="admin-leaderboard" style="padding:0; overflow:hidden;"></div>
+    </div>
+  </div>
+
+  <script>
+    let isAdmin = false;
+
+    async function api(url, opts = {}) {
+      const res = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        ...opts,
+        body: opts.body ? JSON.stringify(opts.body) : undefined
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    }
+
+    async function adminLogin() {
+      try {
+        const password = document.getElementById('admin-password').value;
+        await api('/api/admin/login', { method: 'POST', body: { password } });
+        isAdmin = true;
+        document.getElementById('admin-login').style.display = 'none';
+        document.getElementById('admin-panel').style.display = '';
+        loadAdmin();
+      } catch (e) {
+        const el = document.getElementById('admin-error');
+        el.textContent = e.message;
+        el.classList.add('show');
+      }
+    }
+
+    function adminLogout() {
+      fetch('/api/logout', { method: 'POST' });
+      location.reload();
+    }
+
+    async function loadAdmin() {
+      try {
+        const [matchesData, lbData] = await Promise.all([
+          api('/api/admin/matches'),
+          api('/api/admin/leaderboard')
+        ]);
+        renderAdminMatches(matchesData.matches);
+        renderAdminLeaderboard(lbData.leaderboard);
+      } catch (e) {
+        console.error('Admin load error:', e);
+      }
+    }
+
+    function renderAdminMatches(matches) {
+      const el = document.getElementById('admin-matches');
+      if (matches.length === 0) {
+        el.innerHTML = '<div class="empty">No matches created yet</div>';
+        return;
+      }
+
+      el.innerHTML = matches.map(m => {
+        let actions = '';
+        if (m.status === 'pending') {
+          actions = `
+            <button class="btn btn-sm btn-green" onclick="openBetting('${m.id}')">Open Betting</button>
+            <span style="font-size:0.8rem;color:var(--text2);">Duration (sec):</span>
+            <input type="number" id="dur-${m.id}" value="120" min="10" class="inline-input" style="padding:6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.85rem;">
+            <button class="btn btn-sm btn-red" onclick="cancelMatch('${m.id}')">Delete</button>`;
+        } else if (m.status === 'open') {
+          actions = `
+            <button class="btn btn-sm btn-orange" style="background:var(--orange)" onclick="lockBetting('${m.id}')">Lock Betting</button>
+            <button class="btn btn-sm btn-red" onclick="cancelMatch('${m.id}')">Cancel & Refund</button>`;
+        } else if (m.status === 'locked') {
+          actions = `
+            <button class="btn btn-sm btn-blue" onclick="resolveMatch('${m.id}', 'a')">Winner: ${esc(m.option_a)}</button>
+            <button class="btn btn-sm btn-red" onclick="resolveMatch('${m.id}', 'b')">Winner: ${esc(m.option_b)}</button>
+            <button class="btn btn-sm" style="background:var(--surface2)" onclick="cancelMatch('${m.id}')">Cancel & Refund</button>`;
+        }
+
+        const winnerName = m.winner === 'a' ? m.option_a : m.winner === 'b' ? m.option_b : '';
+
+        return `
+          <div class="admin-match">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div class="title">${esc(m.title)}</div>
+              <span class="status status-${m.status}">${m.status}</span>
+            </div>
+            <div class="pools">
+              <div class="pool pool-a">${esc(m.option_a)}: ${m.bets.a.total.toLocaleString()} pts (${m.bets.a.count})</div>
+              <div class="pool pool-b">${esc(m.option_b)}: ${m.bets.b.total.toLocaleString()} pts (${m.bets.b.count})</div>
+            </div>
+            ${winnerName ? `<div class="info">Winner: <strong>${esc(winnerName)}</strong></div>` : ''}
+            <div class="match-actions">${actions}</div>
+          </div>`;
+      }).join('');
+    }
+
+    function renderAdminLeaderboard(lb) {
+      const el = document.getElementById('admin-leaderboard');
+      if (lb.length === 0) {
+        el.innerHTML = '<div class="empty">No users yet</div>';
+        return;
+      }
+      el.innerHTML = lb.map((u, i) => `
+        <div class="lb-row">
+          <div class="lb-rank ${i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : ''}">#${i + 1}</div>
+          <div class="lb-name">${esc(u.username)}</div>
+          <div class="lb-points">${u.points.toLocaleString()}</div>
+        </div>
+      `).join('');
+    }
+
+    async function createMatch() {
+      try {
+        const title = document.getElementById('new-title').value.trim();
+        const optionA = document.getElementById('new-option-a').value.trim();
+        const optionB = document.getElementById('new-option-b').value.trim();
+        if (!title || !optionA || !optionB) { alert('All fields are required'); return; }
+        await api('/api/admin/matches', { method: 'POST', body: { title, optionA, optionB } });
+        document.getElementById('new-title').value = '';
+        document.getElementById('new-option-a').value = '';
+        document.getElementById('new-option-b').value = '';
+        loadAdmin();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function openBetting(matchId) {
+      try {
+        const durInput = document.getElementById('dur-' + matchId);
+        const duration = durInput ? parseInt(durInput.value) : 120;
+        await api(`/api/admin/matches/${matchId}/open`, { method: 'POST', body: { duration } });
+        loadAdmin();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function lockBetting(matchId) {
+      try {
+        await api(`/api/admin/matches/${matchId}/lock`, { method: 'POST' });
+        loadAdmin();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function resolveMatch(matchId, winner) {
+      if (!confirm('Are you sure? This will distribute points to winners.')) return;
+      try {
+        await api(`/api/admin/matches/${matchId}/resolve`, { method: 'POST', body: { winner } });
+        loadAdmin();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function cancelMatch(matchId) {
+      if (!confirm('Cancel this match? All bets will be refunded.')) return;
+      try {
+        await api(`/api/admin/matches/${matchId}/cancel`, { method: 'POST' });
+        loadAdmin();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function awardPoints() {
+      try {
+        const amount = parseInt(document.getElementById('award-amount').value);
+        const description = document.getElementById('award-desc').value.trim();
+        if (!amount || amount < 1) { alert('Invalid amount'); return; }
+        if (!confirm(`Award ${amount} points to ALL users?`)) return;
+        const data = await api('/api/admin/award', { method: 'POST', body: { amount, description } });
+        alert(`Awarded ${amount} pts to ${data.usersAwarded} users`);
+        loadAdmin();
+      } catch (e) { alert(e.message); }
+    }
+
+    function esc(str) {
+      const d = document.createElement('div');
+      d.textContent = str;
+      return d.innerHTML;
+    }
+
+    // Auto-refresh admin
+    setInterval(loadAdmin, 5000);
+  </script>
+</body>
+</html>

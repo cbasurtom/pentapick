@@ -1,0 +1,5 @@
+node_modules/
+pentapick.db
+*.db-wal
+*.db-shm
+.env
