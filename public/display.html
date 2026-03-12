@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PentaPick - Display</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="display-container">
+    <div class="display-header">
+      <h1>PentaPick</h1>
+    </div>
+
+    <div class="display-grid" id="display-content">
+      <div class="empty">Waiting for matches...</div>
+    </div>
+
+    <div style="display:flex; gap: 20px; margin-top: 20px;">
+      <div style="flex:1;">
+        <div class="display-leaderboard" id="display-leaderboard">
+          <h2>Leaderboard</h2>
+          <div class="empty">No users yet</div>
+        </div>
+      </div>
+      <div class="display-qr" id="display-qr">
+        <p>Loading QR code...</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function loadDisplay() {
+      try {
+        const [matchesRes, lbRes] = await Promise.all([
+          fetch('/api/matches').then(r => r.json()),
+          fetch('/api/leaderboard').then(r => r.json())
+        ]);
+
+        renderMatches(matchesRes.matches);
+        renderLeaderboard(lbRes.leaderboard);
+      } catch (e) {
+        console.error('Display error:', e);
+      }
+    }
+
+    function renderMatches(matches) {
+      const el = document.getElementById('display-content');
+      if (matches.length === 0) {
+        el.innerHTML = '<div class="empty" style="grid-column:1/-1">No active matches right now</div>';
+        return;
+      }
+
+      el.innerHTML = matches.map(m => {
+        const totalPool = m.bets.a.total + m.bets.b.total;
+        const pctA = totalPool > 0 ? Math.round((m.bets.a.total / totalPool) * 100) : 50;
+        const pctB = 100 - pctA;
+        const isOpen = m.status === 'open';
+        const isResolved = m.status === 'resolved';
+
+        let timerHtml = '';
+        if (isOpen && m.betting_ends_at) {
+          const remaining = Math.max(0, Math.floor((new Date(m.betting_ends_at + 'Z') - Date.now()) / 1000));
+          timerHtml = `<div class="display-timer" id="dtimer-${m.id}">${formatTime(remaining)}</div>`;
+        }
+
+        let statusText = '';
+        if (isOpen) statusText = '<span class="status status-open">BETTING OPEN</span>';
+        else if (m.status === 'locked') statusText = '<span class="status status-locked">BETS LOCKED</span>';
+        else if (isResolved) statusText = '<span class="status status-resolved">FINISHED</span>';
+
+        return `
+          <div class="display-match">
+            <div class="title">${esc(m.title)} ${statusText}</div>
+            ${timerHtml}
+            <div class="display-vs">
+              <div class="display-side side-a ${isResolved && m.winner === 'a' ? 'winner' : ''} ${isResolved && m.winner === 'b' ? 'loser' : ''}">
+                <div class="team-name">${esc(m.option_a)}</div>
+                <div class="pool-amount">${m.bets.a.total.toLocaleString()}</div>
+                <div class="bet-count">${m.bets.a.count} bets (${pctA}%)</div>
+              </div>
+              <div class="display-side side-b ${isResolved && m.winner === 'b' ? 'winner' : ''} ${isResolved && m.winner === 'a' ? 'loser' : ''}">
+                <div class="team-name">${esc(m.option_b)}</div>
+                <div class="pool-amount">${m.bets.b.total.toLocaleString()}</div>
+                <div class="bet-count">${m.bets.b.count} bets (${pctB}%)</div>
+              </div>
+            </div>
+            <div class="display-bar">
+              <div class="fill-a" style="width:${pctA}%"></div>
+              <div class="fill-b" style="width:${pctB}%"></div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function renderLeaderboard(lb) {
+      const el = document.getElementById('display-leaderboard');
+      if (lb.length === 0) {
+        el.innerHTML = '<h2>Leaderboard</h2><div class="empty">No users yet</div>';
+        return;
+      }
+
+      el.innerHTML = `<h2>Leaderboard</h2>` + lb.slice(0, 15).map((u, i) => `
+        <div class="display-lb-row">
+          <div class="display-lb-rank ${i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : ''}">#${i + 1}</div>
+          <div class="display-lb-name">${esc(u.username)}</div>
+          <div class="display-lb-points">${u.points.toLocaleString()}</div>
+        </div>
+      `).join('');
+    }
+
+    async function loadQR() {
+      try {
+        const data = await fetch('/api/qr').then(r => r.json());
+        document.getElementById('display-qr').innerHTML = `
+          <img src="${data.qr}" alt="QR Code">
+          <p>Scan to join! <br><strong>${data.url}</strong></p>
+        `;
+      } catch (e) {
+        console.error('QR error:', e);
+      }
+    }
+
+    function formatTime(seconds) {
+      const m = Math.floor(seconds / 60);
+      const s = seconds % 60;
+      return m + ':' + s.toString().padStart(2, '0');
+    }
+
+    function updateTimers() {
+      document.querySelectorAll('[id^="dtimer-"]').forEach(el => {
+        const text = el.textContent;
+        const parts = text.split(':');
+        let total = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+        total = Math.max(0, total - 1);
+        el.textContent = formatTime(total);
+        if (total < 10) el.style.color = 'var(--red)';
+      });
+    }
+
+    function esc(str) {
+      const d = document.createElement('div');
+      d.textContent = str;
+      return d.innerHTML;
+    }
+
+    // Init
+    loadQR();
+    loadDisplay();
+    setInterval(loadDisplay, 3000);
+    setInterval(updateTimers, 1000);
+  </script>
+</body>
+</html>
