@@ -697,12 +697,12 @@ body {
 }
 
 .display-bar {
+  flex: 1;
   height: 8px;
   background: var(--surface2);
   border-radius: 4px;
   overflow: hidden;
   display: flex;
-  margin-bottom: 16px;
 }
 
 .display-bar .fill-a { background: var(--blue); transition: width 0.5s; }
