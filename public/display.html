@@ -95,31 +95,44 @@
     }
 
     function renderTopBettors(m) {
-      if (!m.topBets || m.topBets.length === 0) return '';
+      const tps = m.topBetsPerSide;
+      if (!tps || (tps.a.length === 0 && tps.b.length === 0)) return '';
       const medals = ['#ffd700', '#c0c0c0', '#cd7f32'];
       const isResolved = m.status === 'resolved';
-      return `
-        <div class="top-bettors display-top-bettors">
-          <div class="top-bettors-title">Top Bettors</div>
-          ${m.topBets.slice(0, 3).map((b, i) => {
-            const choiceClass = b.choice === 'a' ? 'side-a' : 'side-b';
-            let resultHtml = '';
-            if (isResolved) {
-              const won = b.choice === m.winner;
-              if (won) {
-                const net = b.payout - b.amount;
-                resultHtml = `<span class="top-bettor-result won">+${net.toLocaleString()}</span>`;
-              } else {
-                resultHtml = `<span class="top-bettor-result lost">-${b.amount.toLocaleString()}</span>`;
-              }
+
+      function renderSide(bettors, side) {
+        if (bettors.length === 0) return '<div class="top-bettor-empty">No bets yet</div>';
+        return bettors.map((b, i) => {
+          let resultHtml = '';
+          if (isResolved) {
+            const won = b.choice === m.winner;
+            if (won) {
+              const net = b.payout - b.amount;
+              resultHtml = `<div class="top-bettor-result won">+${net.toLocaleString()}</div>`;
+            } else {
+              resultHtml = `<div class="top-bettor-result lost">-${b.amount.toLocaleString()}</div>`;
             }
-            return `<div class="top-bettor-row">
-              <span class="top-bettor-medal" style="color:${medals[i]};">#${i + 1}</span>
-              <span class="top-bettor-name">${esc(b.username)}</span>
-              <span class="top-bettor-amount ${choiceClass}">${b.amount.toLocaleString()} pts</span>
-              ${resultHtml}
-            </div>`;
-          }).join('')}
+          }
+          return `<div class="top-bettor-row">
+            <span class="top-bettor-medal" style="color:${medals[i]};">#${i + 1}</span>
+            <span class="top-bettor-name">${esc(b.username)}</span>
+            <span class="top-bettor-amount">${b.amount.toLocaleString()}</span>
+            ${resultHtml}
+          </div>`;
+        }).join('');
+      }
+
+      return `
+        <div class="top-bettors-vs display-top-bettors">
+          <div class="top-bettors-side side-a">
+            <div class="top-bettors-side-header">${esc(m.option_a)}</div>
+            ${renderSide(tps.a, 'a')}
+          </div>
+          <div class="top-bettors-divider">VS</div>
+          <div class="top-bettors-side side-b">
+            <div class="top-bettors-side-header">${esc(m.option_b)}</div>
+            ${renderSide(tps.b, 'b')}
+          </div>
         </div>`;
     }
 

@@ -166,7 +166,31 @@ async function loadMatches(force) {
   }
 }
 
-function renderMatch({ match, bets, topBets, userBet }) {
+function renderSideBettors(bettors, side, match) {
+  const medals = ['#ffd700', '#c0c0c0', '#cd7f32'];
+  const isResolved = match.status === 'resolved';
+  if (bettors.length === 0) return '<div class="top-bettor-empty">No bets yet</div>';
+  return bettors.map((b, i) => {
+    let resultHtml = '';
+    if (isResolved) {
+      const won = b.choice === match.winner;
+      if (won) {
+        const net = b.payout - b.amount;
+        resultHtml = `<div class="top-bettor-result won">+${net.toLocaleString()}</div>`;
+      } else {
+        resultHtml = `<div class="top-bettor-result lost">-${b.amount.toLocaleString()}</div>`;
+      }
+    }
+    return `<div class="top-bettor-row">
+      <span class="top-bettor-medal" style="color:${medals[i]};">#${i + 1}</span>
+      <span class="top-bettor-name">${esc(b.username)}</span>
+      <span class="top-bettor-amount">${b.amount.toLocaleString()}</span>
+      ${resultHtml}
+    </div>`;
+  }).join('');
+}
+
+function renderMatch({ match, bets, topBetsPerSide, userBet }) {
   const totalPool = bets.a.total + bets.b.total;
   const pctA = totalPool > 0 ? Math.round((bets.a.total / totalPool) * 100) : 50;
   const pctB = 100 - pctA;
@@ -209,33 +233,20 @@ function renderMatch({ match, bets, topBets, userBet }) {
 
   const statusClass = match.status;
 
-  // Top 3 bettors section
+  // Top bettors per side (Twitch-style)
   let topBettorsHtml = '';
-  if (topBets && topBets.length > 0) {
-    const medals = ['#ffd700', '#c0c0c0', '#cd7f32'];
+  if (topBetsPerSide && (topBetsPerSide.a.length > 0 || topBetsPerSide.b.length > 0)) {
     topBettorsHtml = `
-      <div class="top-bettors">
-        <div class="top-bettors-title">Top Bettors</div>
-        ${topBets.slice(0, 3).map((b, i) => {
-          const choiceName = b.choice === 'a' ? match.option_a : match.option_b;
-          const choiceClass = b.choice === 'a' ? 'side-a' : 'side-b';
-          let resultHtml = '';
-          if (isResolved) {
-            const won = b.choice === match.winner;
-            if (won) {
-              const net = b.payout - b.amount;
-              resultHtml = `<span class="top-bettor-result won">+${net.toLocaleString()}</span>`;
-            } else {
-              resultHtml = `<span class="top-bettor-result lost">-${b.amount.toLocaleString()}</span>`;
-            }
-          }
-          return `<div class="top-bettor-row">
-            <span class="top-bettor-medal" style="color:${medals[i]};">#${i + 1}</span>
-            <span class="top-bettor-name">${esc(b.username)}</span>
-            <span class="top-bettor-amount ${choiceClass}">${b.amount.toLocaleString()} pts</span>
-            ${resultHtml}
-          </div>`;
-        }).join('')}
+      <div class="top-bettors-vs">
+        <div class="top-bettors-side side-a">
+          <div class="top-bettors-side-header">${esc(match.option_a)}</div>
+          ${renderSideBettors(topBetsPerSide.a, 'a', match)}
+        </div>
+        <div class="top-bettors-divider">VS</div>
+        <div class="top-bettors-side side-b">
+          <div class="top-bettors-side-header">${esc(match.option_b)}</div>
+          ${renderSideBettors(topBetsPerSide.b, 'b', match)}
+        </div>
       </div>`;
   }
 
@@ -345,27 +356,89 @@ async function loadHistory() {
     const data = await api('/api/history');
     const container = document.getElementById('tab-history');
 
-    if (data.transactions.length === 0) {
-      container.innerHTML = '<div class="empty">No transactions yet</div>';
-      return;
+    let html = '';
+
+    // Match results section
+    if (data.betHistory && data.betHistory.length > 0) {
+      html += `<div class="history-section-title">Match Results</div>`;
+      html += data.betHistory.map(b => {
+        const won = b.choice === b.winner;
+        const choiceName = b.choice === 'a' ? b.option_a : b.option_b;
+        const winnerName = b.winner === 'a' ? b.option_a : b.option_b;
+        const net = won ? b.payout - b.amount : -b.amount;
+        const tps = b.topBetsPerSide;
+        const hasTop = tps && (tps.a.length > 0 || tps.b.length > 0);
+
+        return `<div class="card history-match-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div class="card-title" style="font-size:0.9rem;">${esc(b.title)}</div>
+            <span class="tx-amount ${won ? 'positive' : 'negative'}" style="font-size:0.95rem;">
+              ${won ? '+' : ''}${net.toLocaleString()} pts
+            </span>
+          </div>
+          <div style="font-size:0.8rem; color:var(--text2); margin-bottom:8px;">
+            You bet <strong>${b.amount.toLocaleString()}</strong> on <strong>${esc(choiceName)}</strong>
+            &middot; Winner: <strong>${esc(winnerName)}</strong>
+          </div>
+          ${hasTop ? `<div class="top-bettors-vs compact">
+            <div class="top-bettors-side side-a">
+              <div class="top-bettors-side-header">${esc(b.option_a)}</div>
+              ${renderSideBettorsCompact(tps.a, 'a', b)}
+            </div>
+            <div class="top-bettors-divider">VS</div>
+            <div class="top-bettors-side side-b">
+              <div class="top-bettors-side-header">${esc(b.option_b)}</div>
+              ${renderSideBettorsCompact(tps.b, 'b', b)}
+            </div>
+          </div>` : ''}
+        </div>`;
+      }).join('');
     }
 
-    container.innerHTML = `<div class="card" style="padding:8px 12px;">
-      ${data.transactions.map(tx => `
-        <div class="tx-row">
-          <div>
-            <div class="tx-desc">${esc(tx.description)}</div>
-            <div class="tx-time">${new Date(tx.created_at + 'Z').toLocaleTimeString()}</div>
+    // Transaction log
+    if (data.transactions.length > 0) {
+      html += `<div class="history-section-title">Transaction Log</div>`;
+      html += `<div class="card" style="padding:8px 12px;">
+        ${data.transactions.map(tx => `
+          <div class="tx-row">
+            <div>
+              <div class="tx-desc">${esc(tx.description)}</div>
+              <div class="tx-time">${new Date(tx.created_at + 'Z').toLocaleTimeString()}</div>
+            </div>
+            <div class="tx-amount ${tx.amount >= 0 ? 'positive' : 'negative'}">
+              ${tx.amount >= 0 ? '+' : ''}${tx.amount.toLocaleString()}
+            </div>
           </div>
-          <div class="tx-amount ${tx.amount >= 0 ? 'positive' : 'negative'}">
-            ${tx.amount >= 0 ? '+' : ''}${tx.amount.toLocaleString()}
-          </div>
-        </div>
-      `).join('')}
-    </div>`;
+        `).join('')}
+      </div>`;
+    }
+
+    if (!html) html = '<div class="empty">No history yet</div>';
+    container.innerHTML = html;
   } catch (e) {
     console.error('History error:', e);
   }
+}
+
+function renderSideBettorsCompact(bettors, side, matchData) {
+  const medals = ['#ffd700', '#c0c0c0', '#cd7f32'];
+  if (bettors.length === 0) return '<div class="top-bettor-empty">-</div>';
+  return bettors.map((b, i) => {
+    const won = b.choice === matchData.winner;
+    let resultHtml = '';
+    if (won) {
+      const net = b.payout - b.amount;
+      resultHtml = `<div class="top-bettor-result won">+${net.toLocaleString()}</div>`;
+    } else {
+      resultHtml = `<div class="top-bettor-result lost">-${b.amount.toLocaleString()}</div>`;
+    }
+    return `<div class="top-bettor-row">
+      <span class="top-bettor-medal" style="color:${medals[i]};">#${i + 1}</span>
+      <span class="top-bettor-name">${esc(b.username)}</span>
+      <span class="top-bettor-amount">${b.amount.toLocaleString()}</span>
+      ${resultHtml}
+    </div>`;
+  }).join('');
 }
 
 // --- Timers ---
