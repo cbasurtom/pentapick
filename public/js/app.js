@@ -266,9 +266,13 @@ function renderMatch({ match, bets, topBetsPerSide, userBet }) {
           <div class="stats">${bets.b.total.toLocaleString()} pts &middot; ${bets.b.count} bets</div>
         </div>
       </div>
-      <div class="bet-bar">
-        <div class="fill-a" style="width:${pctA}%"></div>
-        <div class="fill-b" style="width:${pctB}%"></div>
+      <div class="bet-bar-row">
+        <span class="bar-pct pct-a">${pctA}%</span>
+        <div class="bet-bar">
+          <div class="fill-a" style="width:${pctA}%"></div>
+          <div class="fill-b" style="width:${pctB}%"></div>
+        </div>
+        <span class="bar-pct pct-b">${pctB}%</span>
       </div>
       ${topBettorsHtml}
       ${actionHtml}
