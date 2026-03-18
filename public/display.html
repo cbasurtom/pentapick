@@ -77,17 +77,21 @@
               <div class="display-side side-a ${isResolved && m.winner === 'a' ? 'winner' : ''} ${isResolved && m.winner === 'b' ? 'loser' : ''}">
                 <div class="team-name">${esc(m.option_a)}</div>
                 <div class="pool-amount">${m.bets.a.total.toLocaleString()}</div>
-                <div class="bet-count">${m.bets.a.count} bets (${pctA}%)</div>
+                <div class="bet-count">${m.bets.a.count} bets</div>
               </div>
               <div class="display-side side-b ${isResolved && m.winner === 'b' ? 'winner' : ''} ${isResolved && m.winner === 'a' ? 'loser' : ''}">
                 <div class="team-name">${esc(m.option_b)}</div>
                 <div class="pool-amount">${m.bets.b.total.toLocaleString()}</div>
-                <div class="bet-count">${m.bets.b.count} bets (${pctB}%)</div>
+                <div class="bet-count">${m.bets.b.count} bets</div>
               </div>
             </div>
-            <div class="display-bar">
-              <div class="fill-a" style="width:${pctA}%"></div>
-              <div class="fill-b" style="width:${pctB}%"></div>
+            <div class="bet-bar-row">
+              <span class="bar-pct pct-a">${pctA}%</span>
+              <div class="display-bar">
+                <div class="fill-a" style="width:${pctA}%"></div>
+                <div class="fill-b" style="width:${pctB}%"></div>
+              </div>
+              <span class="bar-pct pct-b">${pctB}%</span>
             </div>
             ${renderTopBettors(m)}
           </div>`;
