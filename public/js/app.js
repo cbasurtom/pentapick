@@ -1,6 +1,7 @@
 // --- State ---
 let currentUser = null;
 let selectedChoices = {}; // matchId -> 'a' or 'b'
+let pendingAmounts = {}; // matchId -> typed amount (preserved across re-renders)
 let pollInterval = null;
 
 // --- API helpers ---
@@ -118,7 +119,29 @@ async function refreshUser() {
 }
 
 // --- Matches ---
-async function loadMatches() {
+function isUserTyping() {
+  const active = document.activeElement;
+  return active && active.tagName === 'INPUT' && active.id && active.id.startsWith('amount-');
+}
+
+function saveInputState() {
+  document.querySelectorAll('[id^="amount-"]').forEach(el => {
+    const matchId = el.id.replace('amount-', '');
+    if (el.value) pendingAmounts[matchId] = el.value;
+  });
+}
+
+function restoreInputState() {
+  for (const [matchId, val] of Object.entries(pendingAmounts)) {
+    const el = document.getElementById(`amount-${matchId}`);
+    if (el) el.value = val;
+  }
+}
+
+async function loadMatches(force) {
+  // Don't re-render while user is typing a bet amount (unless forced)
+  if (!force && isUserTyping()) return;
+
   try {
     const data = await api('/api/matches');
     const container = document.getElementById('tab-matches');
@@ -128,10 +151,16 @@ async function loadMatches() {
       return;
     }
 
+    // Save input values before re-render
+    saveInputState();
+
     // Load user bets for all matches
     const matchDetails = await Promise.all(data.matches.map(m => api(`/api/matches/${m.id}`)));
 
     container.innerHTML = matchDetails.map(d => renderMatch(d)).join('');
+
+    // Restore input values after re-render
+    restoreInputState();
   } catch (e) {
     console.error('Load matches error:', e);
   }
@@ -239,8 +268,23 @@ function renderMatch({ match, bets, topBets, userBet }) {
 }
 
 function selectChoice(matchId, choice) {
+  // Save the current input value before any re-render
+  const input = document.getElementById(`amount-${matchId}`);
+  if (input && input.value) pendingAmounts[matchId] = input.value;
+
   selectedChoices[matchId] = choice;
-  loadMatches(); // re-render
+
+  // Update selection visually without full re-render
+  const card = input ? input.closest('.card') : null;
+  if (card) {
+    card.querySelectorAll('.bet-option').forEach(el => el.classList.remove('selected'));
+    const options = card.querySelectorAll('.bet-option');
+    if (choice === 'a' && options[0]) options[0].classList.add('selected');
+    if (choice === 'b' && options[1]) options[1].classList.add('selected');
+  } else {
+    // Fallback: full re-render if we can't find the card
+    loadMatches(true);
+  }
 }
 
 function setAmount(matchId, amount) {
@@ -263,7 +307,8 @@ async function placeBet(matchId) {
     currentUser.points = data.points;
     updatePoints();
     delete selectedChoices[matchId];
-    loadMatches();
+    delete pendingAmounts[matchId];
+    loadMatches(true);
   } catch (e) {
     alert(e.message);
   }
@@ -333,7 +378,10 @@ function updateTimers() {
     total = Math.max(0, total - 1);
     el.textContent = formatTime(total);
     if (total < 10) el.classList.add('urgent');
-    if (total === 0) loadMatches();
+    if (total === 0 && !el.dataset.expired) {
+      el.dataset.expired = '1';
+      loadMatches(true);
+    }
   });
 }
 
