@@ -427,28 +427,58 @@ body {
   color: var(--red);
 }
 
-/* Top bettors */
-.top-bettors {
+/* Top bettors - Twitch-style VS layout */
+.top-bettors-vs {
+  display: flex;
+  gap: 0;
   background: var(--surface2);
   border-radius: 8px;
-  padding: 10px 12px;
   margin-bottom: 10px;
+  overflow: hidden;
 }
 
-.top-bettors-title {
+.top-bettors-side {
+  flex: 1;
+  padding: 8px 10px;
+}
+
+.top-bettors-side.side-a {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.top-bettors-side.side-b {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.top-bettors-side-header {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--text2);
-  font-weight: 600;
+  font-weight: 700;
   margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.top-bettors-side.side-a .top-bettors-side-header { color: var(--blue); }
+.top-bettors-side.side-b .top-bettors-side-header { color: var(--red); }
+
+.top-bettors-divider {
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: var(--text2);
+  background: var(--surface2);
 }
 
 .top-bettor-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+  gap: 4px;
+  padding: 3px 0;
 }
 
 .top-bettor-row + .top-bettor-row {
@@ -457,59 +487,104 @@ body {
 
 .top-bettor-medal {
   font-weight: 700;
-  font-size: 0.75rem;
-  width: 22px;
+  font-size: 0.7rem;
+  width: 20px;
+  flex-shrink: 0;
 }
 
 .top-bettor-name {
   flex: 1;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .top-bettor-amount {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 600;
-  color: var(--text2);
+  color: var(--orange);
+  flex-shrink: 0;
 }
 
-.top-bettor-amount.side-a { color: var(--blue); }
-.top-bettor-amount.side-b { color: var(--red); }
-
 .top-bettor-result {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 700;
-  min-width: 50px;
-  text-align: right;
+  flex-shrink: 0;
 }
 
 .top-bettor-result.won { color: var(--green); }
 .top-bettor-result.lost { color: var(--red); }
 
-/* Display page top bettors */
-.display-top-bettors {
-  padding: 14px 16px;
+.top-bettor-empty {
+  font-size: 0.7rem;
+  color: var(--text2);
+  padding: 4px 0;
 }
 
-.display-top-bettors .top-bettors-title {
+/* Compact variant for history */
+.top-bettors-vs.compact {
+  font-size: 0.85em;
+}
+
+/* History section titles */
+.history-section-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text2);
+  font-weight: 600;
+  margin: 16px 0 8px;
+}
+
+.history-section-title:first-child {
+  margin-top: 0;
+}
+
+.history-match-card {
+  padding: 12px;
+}
+
+/* Display page top bettors */
+.display-top-bettors {
+  border-radius: 12px;
+}
+
+.display-top-bettors .top-bettors-side {
+  padding: 12px 14px;
+}
+
+.display-top-bettors .top-bettors-side-header {
   font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+
+.display-top-bettors .top-bettors-divider {
+  font-size: 0.85rem;
+  padding: 0 10px;
 }
 
 .display-top-bettors .top-bettor-row {
-  padding: 6px 0;
+  padding: 5px 0;
+  gap: 6px;
 }
 
 .display-top-bettors .top-bettor-name {
-  font-size: 1rem;
+  font-size: 0.95rem;
 }
 
 .display-top-bettors .top-bettor-amount,
 .display-top-bettors .top-bettor-result {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 
 .display-top-bettors .top-bettor-medal {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+}
+
+.display-top-bettors .top-bettor-empty {
+  font-size: 0.85rem;
 }
 
 /* Empty state */

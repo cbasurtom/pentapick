@@ -1,6 +1,7 @@
 // --- State ---
 let currentUser = null;
 let selectedChoices = {}; // matchId -> 'a' or 'b'
+let pendingAmounts = {}; // matchId -> typed amount (preserved across re-renders)
 let pollInterval = null;
 
 // --- API helpers ---
@@ -118,7 +119,29 @@ async function refreshUser() {
 }
 
 // --- Matches ---
-async function loadMatches() {
+function isUserTyping() {
+  const active = document.activeElement;
+  return active && active.tagName === 'INPUT' && active.id && active.id.startsWith('amount-');
+}
+
+function saveInputState() {
+  document.querySelectorAll('[id^="amount-"]').forEach(el => {
+    const matchId = el.id.replace('amount-', '');
+    if (el.value) pendingAmounts[matchId] = el.value;
+  });
+}
+
+function restoreInputState() {
+  for (const [matchId, val] of Object.entries(pendingAmounts)) {
+    const el = document.getElementById(`amount-${matchId}`);
+    if (el) el.value = val;
+  }
+}
+
+async function loadMatches(force) {
+  // Don't re-render while user is typing a bet amount (unless forced)
+  if (!force && isUserTyping()) return;
+
   try {
     const data = await api('/api/matches');
     const container = document.getElementById('tab-matches');
@@ -128,16 +151,46 @@ async function loadMatches() {
       return;
     }
 
+    // Save input values before re-render
+    saveInputState();
+
     // Load user bets for all matches
     const matchDetails = await Promise.all(data.matches.map(m => api(`/api/matches/${m.id}`)));
 
     container.innerHTML = matchDetails.map(d => renderMatch(d)).join('');
+
+    // Restore input values after re-render
+    restoreInputState();
   } catch (e) {
     console.error('Load matches error:', e);
   }
 }
 
-function renderMatch({ match, bets, topBets, userBet }) {
+function renderSideBettors(bettors, side, match) {
+  const medals = ['#ffd700', '#c0c0c0', '#cd7f32'];
+  const isResolved = match.status === 'resolved';
+  if (bettors.length === 0) return '<div class="top-bettor-empty">No bets yet</div>';
+  return bettors.map((b, i) => {
+    let resultHtml = '';
+    if (isResolved) {
+      const won = b.choice === match.winner;
+      if (won) {
+        const net = b.payout - b.amount;
+        resultHtml = `<div class="top-bettor-result won">+${net.toLocaleString()}</div>`;
+      } else {
+        resultHtml = `<div class="top-bettor-result lost">-${b.amount.toLocaleString()}</div>`;
+      }
+    }
+    return `<div class="top-bettor-row">
+      <span class="top-bettor-medal" style="color:${medals[i]};">#${i + 1}</span>
+      <span class="top-bettor-name">${esc(b.username)}</span>
+      <span class="top-bettor-amount">${b.amount.toLocaleString()}</span>
+      ${resultHtml}
+    </div>`;
+  }).join('');
+}
+
+function renderMatch({ match, bets, topBetsPerSide, userBet }) {
   const totalPool = bets.a.total + bets.b.total;
   const pctA = totalPool > 0 ? Math.round((bets.a.total / totalPool) * 100) : 50;
   const pctB = 100 - pctA;
@@ -180,33 +233,20 @@ function renderMatch({ match, bets, topBets, userBet }) {
 
   const statusClass = match.status;
 
-  // Top 3 bettors section
+  // Top bettors per side (Twitch-style)
   let topBettorsHtml = '';
-  if (topBets && topBets.length > 0) {
-    const medals = ['#ffd700', '#c0c0c0', '#cd7f32'];
+  if (topBetsPerSide && (topBetsPerSide.a.length > 0 || topBetsPerSide.b.length > 0)) {
     topBettorsHtml = `
-      <div class="top-bettors">
-        <div class="top-bettors-title">Top Bettors</div>
-        ${topBets.slice(0, 3).map((b, i) => {
-          const choiceName = b.choice === 'a' ? match.option_a : match.option_b;
-          const choiceClass = b.choice === 'a' ? 'side-a' : 'side-b';
-          let resultHtml = '';
-          if (isResolved) {
-            const won = b.choice === match.winner;
-            if (won) {
-              const net = b.payout - b.amount;
-              resultHtml = `<span class="top-bettor-result won">+${net.toLocaleString()}</span>`;
-            } else {
-              resultHtml = `<span class="top-bettor-result lost">-${b.amount.toLocaleString()}</span>`;
-            }
-          }
-          return `<div class="top-bettor-row">
-            <span class="top-bettor-medal" style="color:${medals[i]};">#${i + 1}</span>
-            <span class="top-bettor-name">${esc(b.username)}</span>
-            <span class="top-bettor-amount ${choiceClass}">${b.amount.toLocaleString()} pts</span>
-            ${resultHtml}
-          </div>`;
-        }).join('')}
+      <div class="top-bettors-vs">
+        <div class="top-bettors-side side-a">
+          <div class="top-bettors-side-header">${esc(match.option_a)}</div>
+          ${renderSideBettors(topBetsPerSide.a, 'a', match)}
+        </div>
+        <div class="top-bettors-divider">VS</div>
+        <div class="top-bettors-side side-b">
+          <div class="top-bettors-side-header">${esc(match.option_b)}</div>
+          ${renderSideBettors(topBetsPerSide.b, 'b', match)}
+        </div>
       </div>`;
   }
 
@@ -239,8 +279,23 @@ function renderMatch({ match, bets, topBets, userBet }) {
 }
 
 function selectChoice(matchId, choice) {
+  // Save the current input value before any re-render
+  const input = document.getElementById(`amount-${matchId}`);
+  if (input && input.value) pendingAmounts[matchId] = input.value;
+
   selectedChoices[matchId] = choice;
-  loadMatches(); // re-render
+
+  // Update selection visually without full re-render
+  const card = input ? input.closest('.card') : null;
+  if (card) {
+    card.querySelectorAll('.bet-option').forEach(el => el.classList.remove('selected'));
+    const options = card.querySelectorAll('.bet-option');
+    if (choice === 'a' && options[0]) options[0].classList.add('selected');
+    if (choice === 'b' && options[1]) options[1].classList.add('selected');
+  } else {
+    // Fallback: full re-render if we can't find the card
+    loadMatches(true);
+  }
 }
 
 function setAmount(matchId, amount) {
@@ -263,7 +318,8 @@ async function placeBet(matchId) {
     currentUser.points = data.points;
     updatePoints();
     delete selectedChoices[matchId];
-    loadMatches();
+    delete pendingAmounts[matchId];
+    loadMatches(true);
   } catch (e) {
     alert(e.message);
   }
@@ -300,27 +356,89 @@ async function loadHistory() {
     const data = await api('/api/history');
     const container = document.getElementById('tab-history');
 
-    if (data.transactions.length === 0) {
-      container.innerHTML = '<div class="empty">No transactions yet</div>';
-      return;
+    let html = '';
+
+    // Match results section
+    if (data.betHistory && data.betHistory.length > 0) {
+      html += `<div class="history-section-title">Match Results</div>`;
+      html += data.betHistory.map(b => {
+        const won = b.choice === b.winner;
+        const choiceName = b.choice === 'a' ? b.option_a : b.option_b;
+        const winnerName = b.winner === 'a' ? b.option_a : b.option_b;
+        const net = won ? b.payout - b.amount : -b.amount;
+        const tps = b.topBetsPerSide;
+        const hasTop = tps && (tps.a.length > 0 || tps.b.length > 0);
+
+        return `<div class="card history-match-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div class="card-title" style="font-size:0.9rem;">${esc(b.title)}</div>
+            <span class="tx-amount ${won ? 'positive' : 'negative'}" style="font-size:0.95rem;">
+              ${won ? '+' : ''}${net.toLocaleString()} pts
+            </span>
+          </div>
+          <div style="font-size:0.8rem; color:var(--text2); margin-bottom:8px;">
+            You bet <strong>${b.amount.toLocaleString()}</strong> on <strong>${esc(choiceName)}</strong>
+            &middot; Winner: <strong>${esc(winnerName)}</strong>
+          </div>
+          ${hasTop ? `<div class="top-bettors-vs compact">
+            <div class="top-bettors-side side-a">
+              <div class="top-bettors-side-header">${esc(b.option_a)}</div>
+              ${renderSideBettorsCompact(tps.a, 'a', b)}
+            </div>
+            <div class="top-bettors-divider">VS</div>
+            <div class="top-bettors-side side-b">
+              <div class="top-bettors-side-header">${esc(b.option_b)}</div>
+              ${renderSideBettorsCompact(tps.b, 'b', b)}
+            </div>
+          </div>` : ''}
+        </div>`;
+      }).join('');
     }
 
-    container.innerHTML = `<div class="card" style="padding:8px 12px;">
-      ${data.transactions.map(tx => `
-        <div class="tx-row">
-          <div>
-            <div class="tx-desc">${esc(tx.description)}</div>
-            <div class="tx-time">${new Date(tx.created_at + 'Z').toLocaleTimeString()}</div>
+    // Transaction log
+    if (data.transactions.length > 0) {
+      html += `<div class="history-section-title">Transaction Log</div>`;
+      html += `<div class="card" style="padding:8px 12px;">
+        ${data.transactions.map(tx => `
+          <div class="tx-row">
+            <div>
+              <div class="tx-desc">${esc(tx.description)}</div>
+              <div class="tx-time">${new Date(tx.created_at + 'Z').toLocaleTimeString()}</div>
+            </div>
+            <div class="tx-amount ${tx.amount >= 0 ? 'positive' : 'negative'}">
+              ${tx.amount >= 0 ? '+' : ''}${tx.amount.toLocaleString()}
+            </div>
           </div>
-          <div class="tx-amount ${tx.amount >= 0 ? 'positive' : 'negative'}">
-            ${tx.amount >= 0 ? '+' : ''}${tx.amount.toLocaleString()}
-          </div>
-        </div>
-      `).join('')}
-    </div>`;
+        `).join('')}
+      </div>`;
+    }
+
+    if (!html) html = '<div class="empty">No history yet</div>';
+    container.innerHTML = html;
   } catch (e) {
     console.error('History error:', e);
   }
+}
+
+function renderSideBettorsCompact(bettors, side, matchData) {
+  const medals = ['#ffd700', '#c0c0c0', '#cd7f32'];
+  if (bettors.length === 0) return '<div class="top-bettor-empty">-</div>';
+  return bettors.map((b, i) => {
+    const won = b.choice === matchData.winner;
+    let resultHtml = '';
+    if (won) {
+      const net = b.payout - b.amount;
+      resultHtml = `<div class="top-bettor-result won">+${net.toLocaleString()}</div>`;
+    } else {
+      resultHtml = `<div class="top-bettor-result lost">-${b.amount.toLocaleString()}</div>`;
+    }
+    return `<div class="top-bettor-row">
+      <span class="top-bettor-medal" style="color:${medals[i]};">#${i + 1}</span>
+      <span class="top-bettor-name">${esc(b.username)}</span>
+      <span class="top-bettor-amount">${b.amount.toLocaleString()}</span>
+      ${resultHtml}
+    </div>`;
+  }).join('');
 }
 
 // --- Timers ---
@@ -333,7 +451,10 @@ function updateTimers() {
     total = Math.max(0, total - 1);
     el.textContent = formatTime(total);
     if (total < 10) el.classList.add('urgent');
-    if (total === 0) loadMatches();
+    if (total === 0 && !el.dataset.expired) {
+      el.dataset.expired = '1';
+      loadMatches(true);
+    }
   });
 }
 

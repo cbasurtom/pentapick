@@ -91,8 +91,8 @@ app.get('/api/matches', (req, res) => {
   const matches = db.getActiveMatches();
   const result = matches.map(m => {
     const summary = db.getMatchBetSummary(m.id);
-    const topBets = db.getMatchBets(m.id).slice(0, 3);
-    return { ...m, bets: summary, topBets };
+    const topBetsPerSide = db.getTopBetsPerSide(m.id, 3);
+    return { ...m, bets: summary, topBetsPerSide };
   });
   res.json({ matches: result });
 });
@@ -101,12 +101,12 @@ app.get('/api/matches/:id', (req, res) => {
   const match = db.getMatch(req.params.id);
   if (!match) return res.status(404).json({ error: 'Match not found' });
   const summary = db.getMatchBetSummary(match.id);
-  const topBets = db.getMatchBets(match.id).slice(0, 10);
+  const topBetsPerSide = db.getTopBetsPerSide(match.id, 3);
   let userBet = null;
   if (req.session.userId) {
     userBet = db.getUserBet(req.session.userId, match.id);
   }
-  res.json({ match, bets: summary, topBets, userBet });
+  res.json({ match, bets: summary, topBetsPerSide, userBet });
 });
 
 app.post('/api/matches/:id/bet', requireUser, (req, res) => {
@@ -127,7 +127,12 @@ app.get('/api/leaderboard', (req, res) => {
 });
 
 app.get('/api/history', requireUser, (req, res) => {
-  res.json({ transactions: db.getUserTransactions(req.session.userId) });
+  const transactions = db.getUserTransactions(req.session.userId);
+  const betHistory = db.getUserBetHistory(req.session.userId).map(b => {
+    const topBetsPerSide = db.getTopBetsPerSide(b.match_id, 3);
+    return { ...b, topBetsPerSide };
+  });
+  res.json({ transactions, betHistory });
 });
 
 // === ADMIN ROUTES ===

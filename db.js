@@ -63,6 +63,12 @@ function initSchema() {
     );
   `);
 
+  // Migrations
+  const cols = db.prepare("PRAGMA table_info(matches)").all().map(c => c.name);
+  if (!cols.includes('resolved_at')) {
+    db.exec("ALTER TABLE matches ADD COLUMN resolved_at TEXT");
+  }
+
   // Set default config
   const upsert = db.prepare('INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)');
   upsert.run('starting_points', '1000');
@@ -104,7 +110,12 @@ function getMatch(id) {
 }
 
 function getActiveMatches() {
-  return getDb().prepare("SELECT * FROM matches WHERE status IN ('open', 'locked') ORDER BY created_at DESC").all();
+  return getDb().prepare(`
+    SELECT * FROM matches
+    WHERE status IN ('open', 'locked')
+       OR (status = 'resolved' AND resolved_at IS NOT NULL AND datetime(resolved_at, '+30 seconds') > datetime('now'))
+    ORDER BY created_at DESC
+  `).all();
 }
 
 function getAllMatches() {
@@ -125,7 +136,7 @@ function resolveMatch(matchId, winner) {
   if (!match) throw new Error('Match not found');
 
   const resolve = d.transaction(() => {
-    d.prepare("UPDATE matches SET status = 'resolved', winner = ? WHERE id = ?").run(winner, matchId);
+    d.prepare("UPDATE matches SET status = 'resolved', winner = ?, resolved_at = datetime('now') WHERE id = ?").run(winner, matchId);
 
     const allBets = d.prepare('SELECT * FROM bets WHERE match_id = ?').all(matchId);
     const totalPool = allBets.reduce((s, b) => s + b.amount, 0);
@@ -211,8 +222,25 @@ function getMatchBetSummary(matchId) {
   return { a: totalA, b: totalB };
 }
 
+function getTopBetsPerSide(matchId, limit = 3) {
+  const d = getDb();
+  const topA = d.prepare("SELECT b.*, u.username FROM bets b JOIN users u ON b.user_id = u.id WHERE b.match_id = ? AND b.choice = 'a' ORDER BY b.amount DESC LIMIT ?").all(matchId, limit);
+  const topB = d.prepare("SELECT b.*, u.username FROM bets b JOIN users u ON b.user_id = u.id WHERE b.match_id = ? AND b.choice = 'b' ORDER BY b.amount DESC LIMIT ?").all(matchId, limit);
+  return { a: topA, b: topB };
+}
+
 function getUserBet(userId, matchId) {
   return getDb().prepare('SELECT * FROM bets WHERE user_id = ? AND match_id = ?').get(userId, matchId);
+}
+
+function getUserBetHistory(userId, limit = 20) {
+  const d = getDb();
+  return d.prepare(`
+    SELECT b.*, m.title, m.option_a, m.option_b, m.winner, m.status as match_status
+    FROM bets b JOIN matches m ON b.match_id = m.id
+    WHERE b.user_id = ? AND m.status = 'resolved'
+    ORDER BY b.created_at DESC LIMIT ?
+  `).all(userId, limit);
 }
 
 // --- Leaderboard ---
@@ -259,7 +287,7 @@ module.exports = {
   getDb, createUser, getUser, getUserByUsername, getUserPoints,
   createMatch, getMatch, getActiveMatches, getAllMatches,
   openBetting, lockBetting, resolveMatch, cancelMatch,
-  placeBet, getMatchBets, getMatchBetSummary, getUserBet,
+  placeBet, getMatchBets, getMatchBetSummary, getTopBetsPerSide, getUserBet, getUserBetHistory,
   getLeaderboard, getUserTransactions, awardPointsToAll,
   getConfig, setConfig
 };
