@@ -92,7 +92,8 @@ app.get('/api/matches', (req, res) => {
   const result = matches.map(m => {
     const summary = db.getMatchBetSummary(m.id);
     const topBetsPerSide = db.getTopBetsPerSide(m.id, 3);
-    return { ...m, bets: summary, topBetsPerSide };
+    const userBet = req.session.userId ? db.getUserBet(req.session.userId, m.id) : null;
+    return { ...m, bets: summary, topBetsPerSide, userBet };
   });
   res.json({ matches: result });
 });

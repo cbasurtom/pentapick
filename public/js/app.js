@@ -154,10 +154,7 @@ async function loadMatches(force) {
     // Save input values before re-render
     saveInputState();
 
-    // Load user bets for all matches
-    const matchDetails = await Promise.all(data.matches.map(m => api(`/api/matches/${m.id}`)));
-
-    container.innerHTML = matchDetails.map(d => renderMatch(d)).join('');
+    container.innerHTML = data.matches.map(m => renderMatch({ match: m, bets: m.bets, topBetsPerSide: m.topBetsPerSide, userBet: m.userBet })).join('');
 
     // Restore input values after re-render
     restoreInputState();
