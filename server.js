@@ -91,7 +91,8 @@ app.get('/api/matches', (req, res) => {
   const matches = db.getActiveMatches();
   const result = matches.map(m => {
     const summary = db.getMatchBetSummary(m.id);
-    return { ...m, bets: summary };
+    const topBets = db.getMatchBets(m.id).slice(0, 3);
+    return { ...m, bets: summary, topBets };
   });
   res.json({ matches: result });
 });

@@ -180,6 +180,36 @@ function renderMatch({ match, bets, topBets, userBet }) {
 
   const statusClass = match.status;
 
+  // Top 3 bettors section
+  let topBettorsHtml = '';
+  if (topBets && topBets.length > 0) {
+    const medals = ['#ffd700', '#c0c0c0', '#cd7f32'];
+    topBettorsHtml = `
+      <div class="top-bettors">
+        <div class="top-bettors-title">Top Bettors</div>
+        ${topBets.slice(0, 3).map((b, i) => {
+          const choiceName = b.choice === 'a' ? match.option_a : match.option_b;
+          const choiceClass = b.choice === 'a' ? 'side-a' : 'side-b';
+          let resultHtml = '';
+          if (isResolved) {
+            const won = b.choice === match.winner;
+            if (won) {
+              const net = b.payout - b.amount;
+              resultHtml = `<span class="top-bettor-result won">+${net.toLocaleString()}</span>`;
+            } else {
+              resultHtml = `<span class="top-bettor-result lost">-${b.amount.toLocaleString()}</span>`;
+            }
+          }
+          return `<div class="top-bettor-row">
+            <span class="top-bettor-medal" style="color:${medals[i]};">#${i + 1}</span>
+            <span class="top-bettor-name">${esc(b.username)}</span>
+            <span class="top-bettor-amount ${choiceClass}">${b.amount.toLocaleString()} pts</span>
+            ${resultHtml}
+          </div>`;
+        }).join('')}
+      </div>`;
+  }
+
   return `
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -203,6 +233,7 @@ function renderMatch({ match, bets, topBets, userBet }) {
         <div class="fill-a" style="width:${pctA}%"></div>
         <div class="fill-b" style="width:${pctB}%"></div>
       </div>
+      ${topBettorsHtml}
       ${actionHtml}
     </div>`;
 }
